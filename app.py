@@ -40,18 +40,49 @@ try:
     import firebase_admin
     from firebase_admin import credentials
     from firebase_admin import messaging as fcm_messaging
+    import base64
     
-    # Check if Firebase credentials file exists
-    firebase_cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-    if firebase_cred_path and os.path.exists(firebase_cred_path):
-        cred = credentials.Certificate(firebase_cred_path)
+    # First, try to get credentials from environment variable (for Vercel/production)
+    firebase_cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    firebase_cred_base64 = os.getenv("FIREBASE_CREDENTIALS_BASE64")
+    
+    cred = None
+    temp_cred_file = None
+    
+    if firebase_cred_base64:
+        # Decode base64 encoded credentials
+        try:
+            firebase_cred_json = base64.b64decode(firebase_cred_base64).decode('utf-8')
+        except Exception as e:
+            print(f"Error decoding base64 Firebase credentials: {e}")
+    
+    if firebase_cred_json:
+        # Create temporary file from environment variable
+        try:
+            import tempfile
+            temp_cred_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            temp_cred_file.write(firebase_cred_json)
+            temp_cred_file.close()
+            cred = credentials.Certificate(temp_cred_file.name)
+            print("Firebase credentials loaded from environment variable")
+        except Exception as e:
+            print(f"Error creating Firebase credentials file from env var: {e}")
+    else:
+        # Fall back to file path method (for local development)
+        firebase_cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+        if firebase_cred_path and os.path.exists(firebase_cred_path):
+            cred = credentials.Certificate(firebase_cred_path)
+            print("Firebase credentials loaded from file path")
+    
+    if cred:
         firebase_admin.initialize_app(cred)
         messaging = fcm_messaging
         firebase_admin_initialized = True
         print("Firebase Admin SDK initialized successfully")
     else:
         print("Firebase credentials not found. Notification sending will be disabled.")
-        print("To enable notifications, set FIREBASE_CREDENTIALS_PATH in .env file")
+        print("To enable notifications, set FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_BASE64 in environment variables")
+        print("Or set FIREBASE_CREDENTIALS_PATH in .env file for local development")
 except ImportError:
     print("firebase-admin not installed. Install it with: pip install firebase-admin")
 except Exception as e:
