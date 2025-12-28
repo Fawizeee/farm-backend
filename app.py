@@ -166,7 +166,7 @@ origins = [origin.strip() for origin in origins]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://farm-frontend-iota.vercel.app"] ,
+    allow_origins=["https://farm-frontend-iota.vercel.app","https://mufucatfishfarm.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
