@@ -88,12 +88,52 @@ except ImportError:
 except Exception as e:
     print(f"Error initializing Firebase Admin SDK: {e}") 
 
-# Create uploads directories if they don't exist
-PAYMENT_PROOFS_DIR = Path("uploads/payment_proofs")
-PAYMENT_PROOFS_DIR.mkdir(parents=True, exist_ok=True)
+# Detect serverless environment
+def is_serverless_environment():
+    """Check if running in a serverless environment"""
+    # Check for Vercel
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+        return True
+    # Check for AWS Lambda
+    if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        return True
+    # Check if /tmp is writable (common in serverless)
+    try:
+        test_path = Path("/tmp")
+        if test_path.exists() and os.access(test_path, os.W_OK):
+            # Try to write a test file
+            test_file = test_path / f".test_{uuid.uuid4()}"
+            try:
+                test_file.touch()
+                test_file.unlink()
+                return True
+            except:
+                pass
+    except:
+        pass
+    return False
 
-PRODUCT_IMAGES_DIR = Path("uploads/product_images")
-PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+# Determine uploads directory based on environment
+IS_SERVERLESS = is_serverless_environment()
+if IS_SERVERLESS:
+    UPLOADS_BASE_DIR = Path("/tmp/uploads")
+else:
+    UPLOADS_BASE_DIR = Path("uploads")
+
+# Create uploads directories if they don't exist
+PAYMENT_PROOFS_DIR = UPLOADS_BASE_DIR / "payment_proofs"
+PRODUCT_IMAGES_DIR = UPLOADS_BASE_DIR / "product_images"
+
+# Try to create directories, but don't fail if we can't (e.g., in read-only filesystem)
+try:
+    PAYMENT_PROOFS_DIR.mkdir(parents=True, exist_ok=True)
+    PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+except (OSError, PermissionError) as e:
+    print(f"Warning: Could not create upload directories: {e}")
+    print("File uploads may not work properly in this environment")
+    # In serverless, /tmp should work, so this is unexpected
+    if IS_SERVERLESS:
+        print("Note: Running in serverless environment, using /tmp for uploads")
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -108,8 +148,16 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Set default rate limit for all endpoints (can be overridden per endpoint)
 default_limit = os.getenv("RATE_LIMIT_DEFAULT", "100/minute")
 
-# Mount static files for serving uploaded images
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Mount static files for serving uploaded images (only in non-serverless environments)
+# In serverless, static files should be served via CDN or object storage
+if not IS_SERVERLESS:
+    try:
+        app.mount("/uploads", StaticFiles(directory=str(UPLOADS_BASE_DIR)), name="uploads")
+    except Exception as e:
+        print(f"Warning: Could not mount static files directory: {e}")
+else:
+    print("Note: Static file serving disabled in serverless environment")
+    print("Consider using a CDN or object storage (S3, Cloudinary, etc.) for file serving")
 
 # CORS Configuration
 origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://10.241.122.254:3000").split(",")
@@ -295,7 +343,9 @@ async def update_product(
         
         # Delete old image if it exists
         if db_product.image_url:
-            old_image_path = Path("uploads") / db_product.image_url.replace("/uploads/", "")
+            # Remove /uploads/ prefix if present, then construct path using UPLOADS_BASE_DIR
+            relative_path = db_product.image_url.replace("/uploads/", "").lstrip("/")
+            old_image_path = UPLOADS_BASE_DIR / relative_path
             if old_image_path.exists():
                 try:
                     old_image_path.unlink()
