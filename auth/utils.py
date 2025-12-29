@@ -30,11 +30,10 @@ def get_password_hash(password: str) -> str:
         password = password.decode('utf-8', errors='ignore')
     
     # Ensure password is encoded as UTF-8 and truncate to 72 bytes
-    # This prevents bcrypt from raising an error about password length
     password_bytes = password.encode('utf-8')
     if len(password_bytes) > 72:
-        password_bytes = password_bytes[:72]
-    password = password_bytes.decode('utf-8', errors='ignore')
+        # Truncate at 72 bytes, but ensure we don't cut in the middle of a multi-byte character
+        password = password_bytes[:72].decode('utf-8', errors='ignore')
     
     return pwd_context.hash(password)
 
