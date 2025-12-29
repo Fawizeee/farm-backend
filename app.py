@@ -142,13 +142,13 @@ else:
     print("Consider using a CDN or object storage (S3, Cloudinary, etc.) for file serving")
 
 # CORS Configuration
-origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://10.241.122.254:3000").split(",")
+# origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,"http://10.241.122.254:3000").split(",")
 # Strip whitespace from origins
-origins = [origin.strip() for origin in origins]
+# origins = [origin.strip() for origin in origins]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://mufucatfishfarm.vercel.app"] ,
+    allow_origins=["https://mufucatfishfarm.vercel.app","http://10.241.122.254:3000"] ,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
