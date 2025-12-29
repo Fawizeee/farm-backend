@@ -71,11 +71,8 @@ async def setup_qwerty_admin(
     
     try:
         # Password for qwerty admin
+        # get_password_hash handles truncation automatically
         password = "qwerty"
-        # Ensure password is a string and truncate to 72 bytes (bcrypt limit)
-        if isinstance(password, bytes):
-            password = password.decode('utf-8')
-        password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
         
         # Check if qwerty user exists
         admin = db.query(Admin).filter(Admin.username == "qwerty").first()
