@@ -33,7 +33,8 @@ def get_password_hash(password: str) -> str:
     password_bytes = password.encode('utf-8')
     if len(password_bytes) > 72:
         # Truncate at 72 bytes, but ensure we don't cut in the middle of a multi-byte character
-        password = password_bytes[:72].decode('utf-8', errors='ignore')
+        password = password_bytes[:72]
+        # .decode('utf-8', errors='ignore')
     
     return pwd_context.hash(password)
 
