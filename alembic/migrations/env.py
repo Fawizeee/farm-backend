@@ -9,7 +9,8 @@ from sqlalchemy import pool
 from alembic import context
 
 # Add the parent directory to the path so we can import our models
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Now that migrations is in alembic/migrations, we need to go up 2 levels to reach Farm-backend
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # Import database and models
 from database import Base, engine
