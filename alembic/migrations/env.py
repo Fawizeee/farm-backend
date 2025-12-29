@@ -31,7 +31,9 @@ from models import (
 config = context.config
 
 # Override sqlalchemy.url with the one from environment
-database_url = os.getenv("DATABASE_URL", "sqlite:///./mufu_farm.db")
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable is required. Please set it in your .env file.")
 config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
@@ -80,15 +82,14 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Use the engine from database.py for SQLite compatibility
+    # Use the engine from database.py for consistency
+    # For PostgreSQL, we can use the configured engine directly
     if "sqlite" in database_url:
         connectable = engine
     else:
-        connectable = engine_from_config(
-            config.get_section(config.config_ini_section, {}),
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
-        )
+        # For PostgreSQL and other databases, use the engine from database.py
+        # which has proper connection pooling configured
+        connectable = engine
 
     with connectable.connect() as connection:
         context.configure(
