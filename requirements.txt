@@ -11,3 +11,4 @@ fastapi-cors==0.0.6
 firebase-admin==6.5.0
 alembic==1.13.1
 slowapi==0.1.9
+pydantic[email]
