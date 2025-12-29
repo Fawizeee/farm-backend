@@ -79,12 +79,22 @@ class NotificationService:
                 print(f"Failed to send notification to token {device_token.id}: {e}")
                 failed_count += 1
                 if "invalid" in str(e).lower() or "not found" in str(e).lower():
+                    # Before deleting device token, set fcm_token_id to NULL in related recipients
+                    # to avoid foreign key constraint violation
+                    db.query(NotificationRecipient).filter(
+                        NotificationRecipient.fcm_token_id == device_token.id
+                    ).update({NotificationRecipient.fcm_token_id: None})
                     db.delete(device_token)
         
         db_notification.sent_count = sent_count
         db_notification.failed_count = failed_count
-        db.commit()
-        db.refresh(db_notification)
+        try:
+            db.commit()
+            db.refresh(db_notification)
+        except Exception as e:
+            db.rollback()
+            print(f"Error committing notification: {e}")
+            raise
         return db_notification
 
     @staticmethod
@@ -150,12 +160,22 @@ class NotificationService:
                 print(f"Failed to send notification to admin token {device_token.id}: {e}")
                 failed_count += 1
                 if "invalid" in str(e).lower() or "not found" in str(e).lower():
+                    # Before deleting device token, set fcm_token_id to NULL in related recipients
+                    # to avoid foreign key constraint violation
+                    db.query(NotificationRecipient).filter(
+                        NotificationRecipient.fcm_token_id == device_token.id
+                    ).update({NotificationRecipient.fcm_token_id: None})
                     db.delete(device_token)
         
         db_notification.sent_count = sent_count
         db_notification.failed_count = failed_count
-        db.commit()
-        db.refresh(db_notification)
+        try:
+            db.commit()
+            db.refresh(db_notification)
+        except Exception as e:
+            db.rollback()
+            print(f"Error committing admin notification: {e}")
+            raise
         return db_notification
 
     @staticmethod

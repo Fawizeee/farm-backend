@@ -186,6 +186,9 @@ async def create_order(
     }
     created_order = OrderService.create_order(db, order_data, order_items)
     
+    # Store order ID before notification attempt to avoid lazy loading after potential rollback
+    order_id = created_order.id
+    
     # Send notification to admin about new order
     if firebase_admin_initialized and messaging:
         try:
@@ -197,7 +200,14 @@ async def create_order(
                 messaging_instance=messaging
             )
         except Exception as e:
-            print(f"Failed to send admin notification for order {created_order.id}: {e}")
+            # Use stored order_id instead of accessing created_order.id to avoid lazy loading
+            # after potential session rollback
+            print(f"Failed to send admin notification for order {order_id}: {e}")
+            # Rollback the session if it's in a bad state due to notification service errors
+            try:
+                db.rollback()
+            except Exception:
+                pass  # Session might already be rolled back
             # Don't fail the order creation if notification fails
     
     return created_order
