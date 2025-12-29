@@ -144,7 +144,7 @@ else:
 # CORS Configuration
 # origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,"http://10.241.122.254:3000").split(",")
 # Strip whitespace from origins
-origins = [origin.strip() for origin in origins]
+# origins = [origin.strip() for origin in origins]
 
 app.add_middleware(
     CORSMiddleware,
