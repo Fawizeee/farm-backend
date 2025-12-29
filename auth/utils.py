@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import os
+import hashlib
+import secrets
 from dotenv import load_dotenv
 
 from database import get_db
@@ -18,24 +19,56 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# PBKDF2 configuration
+PBKDF2_ITERATIONS = 100000  # Number of iterations for PBKDF2
+PBKDF2_HASH_ALGORITHM = 'sha256'  # Hash algorithm for PBKDF2
+SALT_SIZE = 16  # Size of salt in bytes
+
 security = HTTPBearer(auto_error=False)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """
+    Verify a plain password against a PBKDF2 hashed password.
+    Format: salt:hash (both hex encoded)
+    """
+    try:
+        # Split the stored hash into salt and hash components
+        salt, hash_value = hashed_password.split(':')
+        salt = bytes.fromhex(salt)
+        hash_value = bytes.fromhex(hash_value)
+        
+        # Hash the provided password with the same salt
+        new_hash = hashlib.pbkdf2_hmac(
+            PBKDF2_HASH_ALGORITHM,
+            plain_password.encode('utf-8'),
+            salt,
+            PBKDF2_ITERATIONS
+        )
+        
+        # Use constant-time comparison to prevent timing attacks
+        return secrets.compare_digest(new_hash, hash_value)
+    except (ValueError, AttributeError):
+        # Invalid format or missing components
+        return False
 
 def get_password_hash(password: str) -> str:
-    # Bcrypt has a 72-byte limit, so truncate if necessary
-    if isinstance(password, bytes):
-        password = password.decode('utf-8', errors='ignore')
+    """
+    Hash a password using PBKDF2.
+    Returns a string in the format: salt:hash (both hex encoded)
+    """
+    # Generate a random salt
+    salt = secrets.token_bytes(SALT_SIZE)
     
-    # Ensure password is encoded as UTF-8 and truncate to 72 bytes
-    password_bytes = password.encode('utf-8')
-    if len(password_bytes) > 72:
-        # Truncate at 72 bytes, but ensure we don't cut in the middle of a multi-byte character
-        password = password_bytes[:72].decode('utf-8', errors='ignore')
+    # Hash the password with PBKDF2
+    hash_value = hashlib.pbkdf2_hmac(
+        PBKDF2_HASH_ALGORITHM,
+        password.encode('utf-8'),
+        salt,
+        PBKDF2_ITERATIONS
+    )
     
-    return pwd_context.hash(password)
+    # Return salt:hash as hex strings
+    return f"{salt.hex()}:{hash_value.hex()}"
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
