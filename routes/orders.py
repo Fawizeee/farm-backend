@@ -67,20 +67,21 @@ async def get_order(
 @router.get("/user/orders", response_model=List[schemas.OrderResponse])
 async def get_user_orders(
     request: Request,
+    user_id: str = None,
     status_filter: str = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """Get orders for the current user (identified by device_id cookie)"""
-    # Get device_id from cookie
-    device_id = request.cookies.get("device_id")
+    """Get orders for the current user (identified by user_id from localStorage or device_id cookie)"""
+    # Get user_id from query parameter (from localStorage) or fall back to device_id from cookie
+    device_id = user_id or request.cookies.get("device_id")
     
     if not device_id:
-        # Return empty list if no device_id
+        # Return empty list if no user_id or device_id
         return []
     
-    # Query orders by device_id
+    # Query orders by device_id (user_id is stored as device_id in the database)
     query = db.query(Order).filter(Order.device_id == device_id)
     
     # Filter by status if provided

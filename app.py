@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -142,17 +142,58 @@ else:
     print("Consider using a CDN or object storage (S3, Cloudinary, etc.) for file serving")
 
 # CORS Configuration
-# origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,"http://10.241.122.254:3000").split(",")
-# Strip whitespace from origins
-# origins = [origin.strip() for origin in origins]
+# Get allowed origins from environment variable or use defaults
+cors_origins_env = os.getenv("CORS_ORIGINS", "https://mufucatfishfarm.vercel.app,http://localhost:3000,http://10.241.122.254:3000")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://mufucatfishfarm.vercel.app","http://10.241.122.254:3000"] ,
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Additional middleware to ensure CORS headers are always present (backup)
+# This runs after CORSMiddleware, so it only adds headers if CORSMiddleware didn't
+@app.middleware("http")
+async def add_cors_headers_backup(request: Request, call_next):
+    """Add CORS headers to all responses as a backup if CORSMiddleware fails"""
+    response = await call_next(request)
+    origin = request.headers.get("origin")
+    
+    # Only add headers if origin is allowed and headers are missing
+    if origin and origin in cors_origins:
+        if "Access-Control-Allow-Origin" not in response.headers:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
+
+# Explicit OPTIONS handler for CORS preflight requests (backup)
+@app.options("/{full_path:path}")
+async def options_handler(request: Request, full_path: str):
+    """Handle OPTIONS requests for CORS preflight"""
+    origin = request.headers.get("origin")
+    
+    # Check if origin is allowed
+    if origin and origin in cors_origins:
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
+    # If no origin or origin not allowed, still return 200 but without CORS headers
+    return Response(status_code=200)
 
 # Include all routes
 app.include_router(api_router)

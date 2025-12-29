@@ -25,3 +25,4 @@ api_router.include_router(health_router, tags=["Health"])
 
 __all__ = ["api_router"]
 
+
