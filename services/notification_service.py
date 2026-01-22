@@ -23,6 +23,20 @@ class NotificationService:
             return {"status": "success", "message": "Token registered"}
 
     @staticmethod
+    def unsubscribe_token(db: Session, token: str):
+        existing_token = db.query(DeviceToken).filter(DeviceToken.fcm_token == token).first()
+        if existing_token:
+            # Set fcm_token_id to NULL in related recipients before deleting to avoid FK violation
+            db.query(NotificationRecipient).filter(
+                NotificationRecipient.fcm_token_id == existing_token.id
+            ).update({NotificationRecipient.fcm_token_id: None})
+            
+            db.delete(existing_token)
+            db.commit()
+            return True
+        return False
+
+    @staticmethod
     def create_notification(db: Session, title: str, message_text: str) -> Notification:
         db_notification = Notification(
             title=title,

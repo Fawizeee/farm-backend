@@ -143,7 +143,7 @@ else:
 
 # CORS Configuration
 # Get allowed origins from environment variable or use defaults
-cors_origins_env = os.getenv("CORS_ORIGINS", "https://mufucatfishfarm.vercel.app,http://localhost:3000,http://10.241.122.254:3000")
+cors_origins_env = os.getenv("CORS_ORIGINS", "https://mufucatfishfarm.vercel.app,http://localhost:3000,http://10.241.122.254:3000,http://10.117.190.30:3000,http://10.117.190.254:3000")
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 
 # Add CORS middleware

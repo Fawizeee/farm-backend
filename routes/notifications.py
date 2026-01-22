@@ -36,6 +36,24 @@ async def register_notification_token(
     return NotificationService.register_token(db, token_data.token, token_data.deviceId)
 
 
+@router.delete("/notifications/unsubscribe")
+@limiter.limit("10/minute")
+async def unsubscribe_notification_token(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Unsubscribe a device from notifications"""
+    success = NotificationService.unsubscribe_token(db, token)
+    if success:
+        return {"success": True, "message": "Successfully unsubscribed"}
+    else:
+        # We return success even if not found to be idempotent, or specific message if preferred.
+        # User asked for "unsubscribe", implying they want it gone.
+        # If it's already gone, that's a success state for the client.
+        return {"success": True, "message": "Token not found or already unsubscribed"}
+
+
 @router.post("/admin/notifications/register")
 @limiter.limit("10/minute")
 async def register_admin_notification_token(
