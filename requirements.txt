@@ -13,4 +13,4 @@ alembic==1.13.1
 slowapi==0.1.9
 pydantic[email]
 psycopg2-binary==2.9.9
-paystackapi==2.0.2
+paystackapi

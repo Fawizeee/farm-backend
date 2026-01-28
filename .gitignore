@@ -138,4 +138,5 @@ docs/
 tests/
 test/
 *_test.py
+.agent/
 
