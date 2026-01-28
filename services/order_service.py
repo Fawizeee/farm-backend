@@ -10,7 +10,7 @@ class OrderService:
                    date_str: str = None, search: str = None) -> List[Order]:
         query = db.query(Order).options(joinedload(Order.order_items))
         
-        if status_filter:
+        if status_filter: 
             query = query.filter(Order.status == status_filter)
         
         if date_str:
@@ -38,17 +38,23 @@ class OrderService:
 
     @staticmethod
     def create_order(db: Session, order_data: dict, items_data: List[dict]) -> Order:
-        db_order = Order(**order_data)
-        db.add(db_order)
-        db.flush()
-        
-        for item_data in items_data:
-            db_order_item = OrderItem(order_id=db_order.id, **item_data)
-            db.add(db_order_item)
-        
-        db.commit()
-        db.refresh(db_order)
-        return db_order
+        try:
+            db_order = Order(**order_data)
+            db.add(db_order)
+            db.flush()  # Get order.id for items
+            
+            for item_data in items_data:
+                db_order_item = OrderItem(order_id=db_order.id, **item_data)
+                db.add(db_order_item)
+            
+            db.commit()
+            db.refresh(db_order)
+            return db_order
+        except Exception as e:
+            # Rollback entire transaction if any part fails
+            db.rollback()
+            print(f"Error creating order: {e}")
+            raise
 
     @staticmethod
     def update_order_status(db: Session, db_order: Order, status: str) -> Order:
@@ -68,8 +74,11 @@ class OrderService:
         pending_orders = db.query(func.count(Order.id)).filter(Order.status == "pending").scalar()
         completed_orders = db.query(func.count(Order.id)).filter(Order.status == "completed").scalar()
         
-        completed_orders_list = db.query(Order).filter(Order.status == "completed").all()
-        total_revenue = sum(order.total_amount for order in completed_orders_list)
+        # Use SQL aggregate function instead of loading all orders into memory
+        # This prevents memory exhaustion with large datasets
+        total_revenue = db.query(func.sum(Order.total_amount)).filter(
+            Order.status == "completed"
+        ).scalar() or 0
         
         total_products = db.query(func.count(Product.id)).scalar()
         active_products = db.query(func.count(Product.id)).filter(Product.available == True).scalar()
@@ -78,7 +87,8 @@ class OrderService:
             "total_orders": total_orders,
             "pending_orders": pending_orders,
             "completed_orders": completed_orders,
-            "total_revenue": total_revenue,
+            "total_revenue": float(total_revenue),  # Ensure it's a float
             "total_products": total_products,
             "active_products": active_products
         }
+

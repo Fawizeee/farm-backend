@@ -133,3 +133,9 @@ cloudinary_python.txt
 *.pyc
 .pytest_cache/
 
+# Docs and Tests
+docs/
+tests/
+test/
+*_test.py
+

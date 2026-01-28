@@ -48,6 +48,7 @@ async def read_admin_me(current_admin: Admin = Depends(get_current_active_admin)
 async def setup_qwerty_admin(
     request: Request,
     setup_secret: str = Form(...),
+    password: str = Form(...),  # Require password parameter
     db: Session = Depends(get_db)
 ):
     """
@@ -69,11 +70,20 @@ async def setup_qwerty_admin(
             detail="Invalid setup secret"
         )
     
+    # Validate password strength
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long"
+        )
+    
+    if password.lower() in ["password", "qwerty", "12345678", "admin"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Password is too weak. Please use a stronger password."
+        )
+    
     try:
-        # Password for qwerty admin
-        # get_password_hash handles truncation automatically
-        password = "qwerty"
-        
         # Check if qwerty user exists
         admin = db.query(Admin).filter(Admin.username == "qwerty").first()
         
@@ -109,4 +119,5 @@ async def setup_qwerty_admin(
             status_code=500,
             detail=f"Error creating admin: {str(e)}"
         )
+
 

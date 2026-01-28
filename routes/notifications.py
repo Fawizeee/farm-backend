@@ -21,7 +21,7 @@ try:
     from firebase_admin import messaging as fcm_messaging
     firebase_admin_initialized = True
     messaging = fcm_messaging
-except:
+except ImportError:
     pass
 
 

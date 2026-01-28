@@ -33,7 +33,7 @@ try:
     from firebase_admin import messaging as fcm_messaging
     firebase_admin_initialized = True
     messaging = fcm_messaging
-except:
+except ImportError:
     pass
 
 
@@ -106,6 +106,7 @@ async def create_order(
     customer_phone: str = Form(...),
     delivery_address: Optional[str] = Form(None),
     items: str = Form(...),  # JSON string of items array
+    payment_method: str = Form("transfer"), # transfer or paystack
     device_id: Optional[str] = Form(None),
     payment_proof: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db)
@@ -123,6 +124,25 @@ async def create_order(
     # Handle file upload
     payment_proof_url = None
     if payment_proof:
+        # Validate file size (max 10MB)
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+        
+        # Read file content to check size
+        file_content = await payment_proof.read()
+        file_size = len(file_content)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE / (1024 * 1024):.0f}MB"
+            )
+        
+        if file_size == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="File is empty"
+            )
+        
         # Validate file type
         file_ext = Path(payment_proof.filename).suffix.lower()
         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.webp'}
@@ -138,11 +158,19 @@ async def create_order(
         
         # Save file
         try:
+            # Ensure directory exists
+            PAYMENT_PROOFS_DIR.mkdir(parents=True, exist_ok=True)
+            
             with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(payment_proof.file, buffer)
+                buffer.write(file_content)
             
             # Store relative URL path
             payment_proof_url = f"/uploads/payment_proofs/{unique_filename}"
+        except OSError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error saving file: Storage not available. Please try again later."
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
     
@@ -157,13 +185,58 @@ async def create_order(
         if not product_id or not quantity:
             raise HTTPException(status_code=400, detail="Invalid item format")
         
+        # Validate product_id is positive integer
+        try:
+            product_id = int(product_id)
+            if product_id <= 0:
+                raise ValueError()
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid product_id: must be a positive integer"
+            )
+        
+        # Validate quantity is positive integer with maximum limit
+        try:
+            quantity = int(quantity)
+            if quantity <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid quantity for product {product_id}: must be greater than 0"
+                )
+            if quantity > 1000:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid quantity for product {product_id}: cannot exceed 1000 items per product"
+                )
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid quantity for product {product_id}: must be an integer"
+            )
+        
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
         if not product.available:
             raise HTTPException(status_code=400, detail=f"Product {product.name} is not available")
         
-        subtotal = product.price * quantity
+        # Validate product price is positive
+        if product.price <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Product {product.name} has invalid price"
+            )
+        
+        subtotal = float(product.price) * int(quantity)
+        
+        # Additional sanity check for subtotal
+        if subtotal <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid subtotal calculated for product {product.name}"
+            )
+        
         total_amount += subtotal
         
         order_items.append({
@@ -173,6 +246,20 @@ async def create_order(
             "quantity": quantity,
             "subtotal": subtotal
         })
+    
+    # Validate total amount sanity
+    if total_amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Order total must be greater than 0"
+        )
+    
+    if total_amount > 10000000:  # 10 million limit to prevent overflow
+        raise HTTPException(
+            status_code=400,
+            detail="Order total exceeds maximum allowed amount"
+        )
+
     
     # Create order
     order_data = {
@@ -186,11 +273,13 @@ async def create_order(
     }
     created_order = OrderService.create_order(db, order_data, order_items)
     
-    # Store order ID before notification attempt to avoid lazy loading after potential rollback
+    # Store order ID immediately after creation to avoid lazy loading issues
     order_id = created_order.id
     
     # Send notification to admin about new order
-    if firebase_admin_initialized and messaging:
+    # NOTE: This happens AFTER order commit, so notification failure won't affect order
+    # Only notify for transfer payments immediately. Paystack payments notify after success.
+    if payment_method == "transfer" and firebase_admin_initialized and messaging:
         try:
             NotificationService.send_notification_to_admin(
                 db=db,
@@ -200,15 +289,10 @@ async def create_order(
                 messaging_instance=messaging
             )
         except Exception as e:
-            # Use stored order_id instead of accessing created_order.id to avoid lazy loading
-            # after potential session rollback
-            print(f"Failed to send admin notification for order {order_id}: {e}")
-            # Rollback the session if it's in a bad state due to notification service errors
-            try:
-                db.rollback()
-            except Exception:
-                pass  # Session might already be rolled back
-            # Don't fail the order creation if notification fails
+            # Log the error but don't fail the order creation
+            # The order was already successfully created and committed
+            print(f"Warning: Failed to send admin notification for order {order_id}: {e}")
+            # Don't rollback - order is already committed successfully
     
     return created_order
 

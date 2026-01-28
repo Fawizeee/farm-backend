@@ -67,6 +67,8 @@ try:
         print("Or set FIREBASE_CREDENTIALS_PATH in .env file for local development")
 except ImportError:
     print("firebase-admin not installed. Install it with: pip install firebase-admin")
+except ValueError as e:
+    print(f"Error with Firebase credentials format: {e}")
 except Exception as e:
     print(f"Error initializing Firebase Admin SDK: {e}") 
 
@@ -74,25 +76,40 @@ except Exception as e:
 def is_serverless_environment():
     """Check if running in a serverless environment"""
     # Check for Vercel
-    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"): 
         return True
     # Check for AWS Lambda
     if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
         return True
-    # Check if /tmp is writable (common in serverless)
-    try:
-        test_path = Path("/tmp")
-        if test_path.exists() and os.access(test_path, os.W_OK):
-            # Try to write a test file
-            test_file = test_path / f".test_{uuid.uuid4()}"
-            try:
-                test_file.touch()
-                test_file.unlink()
-                return True
-            except:
-                pass
-    except:
-        pass
+    # Check for Google Cloud Functions
+    if os.getenv("FUNCTION_NAME") or os.getenv("FUNCTION_TARGET"):
+        return True
+    # Check for Azure Functions
+    if os.getenv("AZURE_FUNCTIONS_ENVIRONMENT"):
+        return True
+    
+    # On Unix systems (not Windows), check if /tmp is the only writable directory
+    # This is a weak indicator and should only be used as a last resort
+    # On Windows, C:\tmp is not a serverless indicator
+    import platform
+    if platform.system() != "Windows":
+        try:
+            test_path = Path("/tmp")
+            if test_path.exists() and os.access(test_path, os.W_OK):
+                # Check if current directory is read-only (serverless indicator)
+                try:
+                    current_dir = Path.cwd()
+                    test_file = current_dir / f".test_{uuid.uuid4()}"
+                    test_file.touch()
+                    test_file.unlink()
+                    # If we can write to current dir, it's not serverless
+                    return False
+                except (OSError, PermissionError):
+                    # Can't write to current dir, likely serverless
+                    return True
+        except (OSError, PermissionError):
+            pass
+    
     return False
 
 # Determine uploads directory based on environment
@@ -130,27 +147,16 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Set default rate limit for all endpoints (can be overridden per endpoint)
 default_limit = os.getenv("RATE_LIMIT_DEFAULT", "100/minute")
 
-# Mount static files for serving uploaded images (only in non-serverless environments)
-# In serverless, static files should be served via CDN or object storage
-if not IS_SERVERLESS:
-    try:
-        app.mount("/uploads", StaticFiles(directory=str(UPLOADS_BASE_DIR)), name="uploads")
-    except Exception as e:
-        print(f"Warning: Could not mount static files directory: {e}")
-else:
-    print("Note: Static file serving disabled in serverless environment")
-    print("Consider using a CDN or object storage (S3, Cloudinary, etc.) for file serving")
-
 # CORS Configuration
 # Get allowed origins from environment variable or use defaults
-cors_origins_env = os.getenv("CORS_ORIGINS", "https://mufucatfishfarm.vercel.app,http://localhost:3000,http://10.241.122.254:3000,http://10.117.190.30:3000,http://10.117.190.254:3000")
+cors_origins_env = os.getenv("CORS_IP")
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=True, 
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -174,29 +180,22 @@ async def add_cors_headers_backup(request: Request, call_next):
     
     return response
 
-# Explicit OPTIONS handler for CORS preflight requests (backup)
-@app.options("/{full_path:path}")
-async def options_handler(request: Request, full_path: str):
-    """Handle OPTIONS requests for CORS preflight"""
-    origin = request.headers.get("origin")
-    
-    # Check if origin is allowed
-    if origin and origin in cors_origins:
-        return Response(
-            status_code=200,
-            headers={
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "3600",
-            }
-        )
-    # If no origin or origin not allowed, still return 200 but without CORS headers
-    return Response(status_code=200)
-
 # Include all routes
 app.include_router(api_router)
+
+# Mount static files for serving uploaded images (only in non-serverless environments)
+# This MUST come AFTER including routes to avoid route conflicts
+# In serverless, static files should be served via CDN or object storage
+if not IS_SERVERLESS:
+    try:
+        # Mount uploads directory to serve images
+        app.mount("/uploads", StaticFiles(directory=str(UPLOADS_BASE_DIR)), name="uploads")
+        print(f"Static files mounted at /uploads serving from {UPLOADS_BASE_DIR}")
+    except Exception as e:
+        print(f"Warning: Could not mount static files directory: {e}") 
+else:
+    print("Note: Static file serving disabled in serverless environment")
+    print("Consider using a CDN or object storage (S3, Cloudinary, etc.) for file serving")
 
 # ==================== ROUTES MOVED TO routes/ FOLDER ====================
 # All routes have been moved to separate files in the routes/ folder:
@@ -209,6 +208,7 @@ app.include_router(api_router)
 # - routes/dashboard.py - Dashboard stats
 # - routes/notifications.py - Notification routes
 # - routes/health.py - Health check routes
+# - routes/payment.py - Payment routes
 
 if __name__ == "__main__":
     import uvicorn

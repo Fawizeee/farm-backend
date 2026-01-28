@@ -62,6 +62,25 @@ async def create_product(
     # Handle image upload
     image_url = None
     if image and image.filename:
+        # Validate file size (max 5MB for product images)
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+        
+        # Read file content to check size
+        contents = await image.read()
+        file_size = len(contents)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image too large. Maximum size is {MAX_FILE_SIZE / (1024 * 1024):.0f}MB"
+            )
+        
+        if file_size == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Image file is empty"
+            )
+        
         # Validate file type
         file_ext = Path(image.filename).suffix.lower()
         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
@@ -77,13 +96,19 @@ async def create_product(
         
         # Save file
         try:
-            # Read file content
-            contents = await image.read()
+            # Ensure directory exists
+            PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+            
             with open(file_path, "wb") as buffer:
                 buffer.write(contents)
             
             # Store relative URL path
             image_url = f"/uploads/product_images/{unique_filename}"
+        except OSError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error saving image: Storage not available. Please try again later."
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
     
@@ -135,6 +160,25 @@ async def update_product(
     
     # Handle image upload if provided
     if image and image.filename:
+        # Validate file size (max 5MB for product images)
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+        
+        # Read file content to check size
+        contents = await image.read()
+        file_size = len(contents)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image too large. Maximum size is {MAX_FILE_SIZE / (1024 * 1024):.0f}MB"
+            )
+        
+        if file_size == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Image file is empty"
+            )
+        
         # Validate file type
         file_ext = Path(image.filename).suffix.lower()
         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
@@ -153,6 +197,7 @@ async def update_product(
                 try:
                     old_image_path.unlink()
                 except Exception as e:
+                    # Log instead of print for production
                     print(f"Warning: Could not delete old image: {e}")
         
         # Generate unique filename
@@ -161,13 +206,19 @@ async def update_product(
         
         # Save new file
         try:
-            # Read file content
-            contents = await image.read()
+            # Ensure directory exists
+            PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+            
             with open(file_path, "wb") as buffer:
                 buffer.write(contents)
             
             # Store relative URL path
             update_data["image_url"] = f"/uploads/product_images/{unique_filename}"
+        except OSError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error saving image: Storage not available. Please try again later."
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
     

@@ -8,6 +8,7 @@ from .contact import router as contact_router
 from .dashboard import router as dashboard_router
 from .notifications import router as notifications_router
 from .health import router as health_router
+from .payment import router as payment_router
 
 # Create main API router
 api_router = APIRouter()
@@ -22,6 +23,7 @@ api_router.include_router(contact_router, tags=["Contact"])
 api_router.include_router(dashboard_router, tags=["Dashboard"])
 api_router.include_router(notifications_router, tags=["Notifications"])
 api_router.include_router(health_router, tags=["Health"])
+api_router.include_router(payment_router, tags=["Payment"])
 
 __all__ = ["api_router"]
 
