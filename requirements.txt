@@ -14,3 +14,4 @@ slowapi==0.1.9
 pydantic[email]
 psycopg2-binary==2.9.9
 paystackapi
+boto3

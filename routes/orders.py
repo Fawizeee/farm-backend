@@ -158,21 +158,26 @@ async def create_order(
         
         # Save file
         try:
-            # Ensure directory exists
-            PAYMENT_PROOFS_DIR.mkdir(parents=True, exist_ok=True)
-            
-            with open(file_path, "wb") as buffer:
-                buffer.write(file_content)
-            
-            # Store relative URL path
-            payment_proof_url = f"/uploads/payment_proofs/{unique_filename}"
-        except OSError as e:
+            if IS_SERVERLESS:
+                from services.s3_service import S3Service
+                s3_path = f"payment_proofs/{unique_filename}"
+                s3_url = S3Service.upload_file(file_content, s3_path, payment_proof.content_type)
+                if s3_url:
+                    payment_proof_url = s3_url
+                else:
+                    raise Exception("S3 upload failed")
+            else:
+                # Ensure directory exists
+                PAYMENT_PROOFS_DIR.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "wb") as buffer:
+                    buffer.write(file_content)
+                # Store relative URL path
+                payment_proof_url = f"/uploads/payment_proofs/{unique_filename}"
+        except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error saving file: Storage not available. Please try again later."
+                detail=f"Error saving image: {str(e)}"
             )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
     
     # Calculate total amount
     total_amount = 0

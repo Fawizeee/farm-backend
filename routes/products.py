@@ -97,21 +97,26 @@ async def create_product(
         
         # Save file
         try:
-            # Ensure directory exists
-            PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-            
-            with open(file_path, "wb") as buffer:
-                buffer.write(contents)
-            
-            # Store relative URL path
-            image_url = f"/uploads/product_images/{unique_filename}"
-        except OSError as e:
+            if IS_SERVERLESS:
+                from services.s3_service import S3Service
+                s3_path = f"product_images/{unique_filename}"
+                s3_url = S3Service.upload_file(contents, s3_path, image.content_type)
+                if s3_url:
+                    image_url = s3_url
+                else:
+                    raise Exception("S3 upload failed")
+            else:
+                # Ensure directory exists
+                PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "wb") as buffer:
+                    buffer.write(contents)
+                # Store relative URL path
+                image_url = f"/uploads/product_images/{unique_filename}"
+        except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error saving image: Storage not available. Please try again later."
+                detail=f"Error saving image: {str(e)}"
             )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
     
     # Convert available string to boolean
     available_bool = available.lower() in ('true', '1', 'yes', 'on')
@@ -210,21 +215,26 @@ async def update_product(
         
         # Save new file
         try:
-            # Ensure directory exists
-            PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-            
-            with open(file_path, "wb") as buffer:
-                buffer.write(contents)
-            
-            # Store relative URL path
-            update_data["image_url"] = f"/uploads/product_images/{unique_filename}"
-        except OSError as e:
+            if IS_SERVERLESS:
+                from services.s3_service import S3Service
+                s3_path = f"product_images/{unique_filename}"
+                s3_url = S3Service.upload_file(contents, s3_path, image.content_type)
+                if s3_url:
+                    update_data["image_url"] = s3_url
+                else:
+                    raise Exception("S3 upload failed")
+            else:
+                # Ensure directory exists
+                PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "wb") as buffer:
+                    buffer.write(contents)
+                # Store relative URL path
+                update_data["image_url"] = f"/uploads/product_images/{unique_filename}"
+        except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error saving image: Storage not available. Please try again later."
+                detail=f"Error saving image: {str(e)}"
             )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
     
     return ProductService.update_product(db, db_product, update_data)
 
