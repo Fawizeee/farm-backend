@@ -10,6 +10,7 @@ class ProductBase(BaseModel):
     icon: str
     image_url: Optional[str] = None
     available: bool = True
+    is_active: bool = True
 
 class ProductCreate(ProductBase):
     pass
@@ -22,6 +23,7 @@ class ProductUpdate(BaseModel):
     icon: Optional[str] = None
     image_url: Optional[str] = None
     available: Optional[bool] = None
+    is_active: Optional[bool] = None
 
 class ProductResponse(ProductBase):
     id: int

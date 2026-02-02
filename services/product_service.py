@@ -4,8 +4,10 @@ from typing import List, Optional
 
 class ProductService:
     @staticmethod
-    def get_products(db: Session, skip: int = 0, limit: int = 100, available_only: bool = False) -> List[Product]:
+    def get_products(db: Session, skip: int = 0, limit: int = 100, available_only: bool = False, include_inactive: bool = False) -> List[Product]:
         query = db.query(Product)
+        if not include_inactive:
+            query = query.filter(Product.is_active == True)
         if available_only:
             query = query.filter(Product.available == True)
         return query.offset(skip).limit(limit).all()
@@ -33,5 +35,5 @@ class ProductService:
 
     @staticmethod
     def delete_product(db: Session, db_product: Product):
-        db.delete(db_product)
+        db_product.is_active = False
         db.commit()

@@ -13,5 +13,6 @@ class Product(Base):
     icon = Column(String(100), nullable=False)
     image_url = Column(String(500), nullable=True)
     available = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

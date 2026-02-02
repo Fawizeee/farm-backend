@@ -123,7 +123,7 @@ async def get_current_admin(
         token_data = TokenData(username=username)
     except JWTError:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token. Please login again.",
             headers={"WWW-Authenticate": "Bearer"},
         )

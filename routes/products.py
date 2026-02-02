@@ -29,10 +29,11 @@ async def get_products(
     skip: int = 0,
     limit: int = 100,
     available_only: bool = False,
+    include_inactive: bool = False,
     db: Session = Depends(get_db)
 ):
     """Get all products"""
-    return ProductService.get_products(db, skip, limit, available_only)
+    return ProductService.get_products(db, skip, limit, available_only, include_inactive)
 
 
 @router.get("/{product_id}", response_model=schemas.ProductResponse)
@@ -139,6 +140,7 @@ async def update_product(
     unit: Optional[str] = Form(None),
     icon: Optional[str] = Form(None),
     available: Optional[str] = Form(None),
+    is_active: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_active_admin)
@@ -157,6 +159,8 @@ async def update_product(
     if icon is not None: update_data["icon"] = icon
     if available is not None:
         update_data["available"] = available.lower() in ('true', '1', 'yes', 'on')
+    if is_active is not None:
+        update_data["is_active"] = is_active.lower() in ('true', '1', 'yes', 'on')
     
     # Handle image upload if provided
     if image and image.filename:
