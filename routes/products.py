@@ -15,12 +15,9 @@ from .limiter import limiter
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
 # Get upload directories from environment or use defaults
-IS_SERVERLESS = os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
-if IS_SERVERLESS:
-    UPLOADS_BASE_DIR = Path("/tmp/uploads")
-else:
-    UPLOADS_BASE_DIR = Path("uploads")
-
+# Get upload directories from environment or use defaults
+# Local uploads directory for legacy cleanup only
+UPLOADS_BASE_DIR = Path("uploads")
 PRODUCT_IMAGES_DIR = UPLOADS_BASE_DIR / "product_images"
 
 
@@ -96,22 +93,15 @@ async def create_product(
         file_path = PRODUCT_IMAGES_DIR / unique_filename
         
         # Save file
+        # Save file
         try:
-            if IS_SERVERLESS:
-                from services.s3_service import S3Service
-                s3_path = f"product_images/{unique_filename}"
-                s3_url = S3Service.upload_file(contents, s3_path, image.content_type)
-                if s3_url:
-                    image_url = s3_url
-                else:
-                    raise Exception("S3 upload failed")
+            from services.s3_service import S3Service
+            s3_path = f"product_images/{unique_filename}"
+            s3_url = S3Service.upload_file(contents, s3_path, image.content_type)
+            if s3_url:
+                image_url = s3_url
             else:
-                # Ensure directory exists
-                PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-                with open(file_path, "wb") as buffer:
-                    buffer.write(contents)
-                # Store relative URL path
-                image_url = f"/uploads/product_images/{unique_filename}"
+                raise Exception("S3 upload failed")
         except Exception as e:
             raise HTTPException(
                 status_code=500,
@@ -199,37 +189,41 @@ async def update_product(
         
         # Delete old image if it exists
         if db_product.image_url:
-            # Remove /uploads/ prefix if present, then construct path using UPLOADS_BASE_DIR
-            relative_path = db_product.image_url.replace("/uploads/", "").lstrip("/")
-            old_image_path = UPLOADS_BASE_DIR / relative_path
-            if old_image_path.exists():
+            if "amazonaws.com" in db_product.image_url:
+                # Handle S3 URL deletion
                 try:
-                    old_image_path.unlink()
+                    from services.s3_service import S3Service
+                    # Format: https://bucket.s3.region.amazonaws.com/object_key
+                    url_parts = db_product.image_url.split(".amazonaws.com/")
+                    if len(url_parts) > 1:
+                        s3_key = url_parts[1]
+                        S3Service.delete_file(s3_key)
                 except Exception as e:
-                    # Log instead of print for production
-                    print(f"Warning: Could not delete old image: {e}")
+                    print(f"Warning: Could not delete old image from S3: {e}")
+            else:
+                # Handle local file deletion
+                relative_path = db_product.image_url.replace("/uploads/", "").lstrip("/")
+                old_image_path = UPLOADS_BASE_DIR / relative_path
+                if old_image_path.exists():
+                    try:
+                        old_image_path.unlink()
+                    except Exception as e:
+                        print(f"Warning: Could not delete old local image: {e}")
         
         # Generate unique filename
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         file_path = PRODUCT_IMAGES_DIR / unique_filename
         
         # Save new file
+        # Save new file
         try:
-            if IS_SERVERLESS:
-                from services.s3_service import S3Service
-                s3_path = f"product_images/{unique_filename}"
-                s3_url = S3Service.upload_file(contents, s3_path, image.content_type)
-                if s3_url:
-                    update_data["image_url"] = s3_url
-                else:
-                    raise Exception("S3 upload failed")
+            from services.s3_service import S3Service
+            s3_path = f"product_images/{unique_filename}"
+            s3_url = S3Service.upload_file(contents, s3_path, image.content_type)
+            if s3_url:
+                update_data["image_url"] = s3_url
             else:
-                # Ensure directory exists
-                PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-                with open(file_path, "wb") as buffer:
-                    buffer.write(contents)
-                # Store relative URL path
-                update_data["image_url"] = f"/uploads/product_images/{unique_filename}"
+                raise Exception("S3 upload failed")
         except Exception as e:
             raise HTTPException(
                 status_code=500,

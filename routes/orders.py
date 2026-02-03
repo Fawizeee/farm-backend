@@ -17,11 +17,9 @@ from .limiter import limiter
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
 
 # Get upload directories from environment or use defaults
-IS_SERVERLESS = os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
-if IS_SERVERLESS:
-    UPLOADS_BASE_DIR = Path("/tmp/uploads")
-else:
-    UPLOADS_BASE_DIR = Path("uploads")
+# Get upload directories from environment or use defaults
+# Local uploads directory for legacy cleanup only
+UPLOADS_BASE_DIR = Path("uploads")
 
 PAYMENT_PROOFS_DIR = UPLOADS_BASE_DIR / "payment_proofs"
 
@@ -156,23 +154,16 @@ async def create_order(
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         file_path = PAYMENT_PROOFS_DIR / unique_filename
         
+        
         # Save file
         try:
-            if IS_SERVERLESS:
-                from services.s3_service import S3Service
-                s3_path = f"payment_proofs/{unique_filename}"
-                s3_url = S3Service.upload_file(file_content, s3_path, payment_proof.content_type)
-                if s3_url:
-                    payment_proof_url = s3_url
-                else:
-                    raise Exception("S3 upload failed")
+            from services.s3_service import S3Service
+            s3_path = f"payment_proofs/{unique_filename}"
+            s3_url = S3Service.upload_file(file_content, s3_path, payment_proof.content_type)
+            if s3_url:
+                payment_proof_url = s3_url
             else:
-                # Ensure directory exists
-                PAYMENT_PROOFS_DIR.mkdir(parents=True, exist_ok=True)
-                with open(file_path, "wb") as buffer:
-                    buffer.write(file_content)
-                # Store relative URL path
-                payment_proof_url = f"/uploads/payment_proofs/{unique_filename}"
+                raise Exception("S3 upload failed")
         except Exception as e:
             raise HTTPException(
                 status_code=500,

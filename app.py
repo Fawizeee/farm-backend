@@ -72,52 +72,8 @@ except ValueError as e:
 except Exception as e:
     print(f"Error initializing Firebase Admin SDK: {e}") 
 
-# Detect serverless environment
-def is_serverless_environment():
-    """Check if running in a serverless environment"""
-    # Check for Vercel
-    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"): 
-        return True
-    # Check for AWS Lambda
-    if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
-        return True
-    # Check for Google Cloud Functions
-    if os.getenv("FUNCTION_NAME") or os.getenv("FUNCTION_TARGET"):
-        return True
-    # Check for Azure Functions
-    if os.getenv("AZURE_FUNCTIONS_ENVIRONMENT"):
-        return True
-    
-    # On Unix systems (not Windows), check if /tmp is the only writable directory
-    # This is a weak indicator and should only be used as a last resort
-    # On Windows, C:\tmp is not a serverless indicator
-    import platform
-    if platform.system() != "Windows":
-        try:
-            test_path = Path("/tmp")
-            if test_path.exists() and os.access(test_path, os.W_OK):
-                # Check if current directory is read-only (serverless indicator)
-                try:
-                    current_dir = Path.cwd()
-                    test_file = current_dir / f".test_{uuid.uuid4()}"
-                    test_file.touch()
-                    test_file.unlink()
-                    # If we can write to current dir, it's not serverless
-                    return False
-                except (OSError, PermissionError):
-                    # Can't write to current dir, likely serverless
-                    return True
-        except (OSError, PermissionError):
-            pass
-    
-    return False
-
-# Determine uploads directory based on environment
-IS_SERVERLESS = is_serverless_environment()
-if IS_SERVERLESS:
-    UPLOADS_BASE_DIR = Path("/tmp/uploads")
-else:
-    UPLOADS_BASE_DIR = Path("uploads")
+# Uploads directory
+UPLOADS_BASE_DIR = Path("uploads")
 
 # Create uploads directories if they don't exist
 PAYMENT_PROOFS_DIR = UPLOADS_BASE_DIR / "payment_proofs"
@@ -129,10 +85,7 @@ try:
     PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 except (OSError, PermissionError) as e:
     print(f"Warning: Could not create upload directories: {e}")
-    print("File uploads may not work properly in this environment")
-    # In serverless, /tmp should work, so this is unexpected
-    if IS_SERVERLESS:
-        print("Note: Running in serverless environment, using /tmp for uploads")
+    print("File uploads may not work properly for local testing if needed")
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -183,19 +136,8 @@ async def add_cors_headers_backup(request: Request, call_next):
 # Include all routes
 app.include_router(api_router)
 
-# Mount static files for serving uploaded images (only in non-serverless environments)
-# This MUST come AFTER including routes to avoid route conflicts
-# In serverless, static files should be served via CDN or object storage
-if not IS_SERVERLESS:
-    try:
-        # Mount uploads directory to serve images
-        app.mount("/uploads", StaticFiles(directory=str(UPLOADS_BASE_DIR)), name="uploads")
-        print(f"Static files mounted at /uploads serving from {UPLOADS_BASE_DIR}")
-    except Exception as e:
-        print(f"Warning: Could not mount static files directory: {e}") 
-else:
-    print("Note: Static file serving disabled in serverless environment")
-    print("Consider using a CDN or object storage (S3, Cloudinary, etc.) for file serving")
+# Static files are now served via S3 URLs, so no local mounting needed.
+# If local testing is required, ensure S3 credentials are set up.
 
 # ==================== ROUTES MOVED TO routes/ FOLDER ====================
 # All routes have been moved to separate files in the routes/ folder:
